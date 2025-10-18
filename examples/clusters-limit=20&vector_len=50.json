@@ -1,0 +1,228 @@
+{
+  "Cluster 0": [
+    {
+      "id": 2,
+      "text": "The system must associate exactly one delivery address with each customer account."
+    },
+    {
+      "id": 5,
+      "text": "The system must maintain a catalog of simple products (e.g., croissant, orange juice) and prepackaged products (e.g., mini-breakfast)."
+    },
+    {
+      "id": 6,
+      "text": "Each product in the catalog must have a unique alphanumeric product code."
+    },
+    {
+      "id": 7,
+      "text": "Each product must have a defined unit of measure (e.g., piece, 100 grams)."
+    },
+    {
+      "id": 8,
+      "text": "Each product must have a price per unit denominated in Euros."
+    },
+    {
+      "id": 9,
+      "text": "A prepackaged product may include one or more simple products and/or other prepackaged products."
+    },
+    {
+      "id": 10,
+      "text": "The system must allow unauthenticated users to browse the full product catalog."
+    },
+    {
+      "id": 11,
+      "text": "The system must provide a browser-based product search function accessible without authentication."
+    },
+    {
+      "id": 12,
+      "text": "The system must allow filtering products by numeric attributes such as price and calorie count."
+    },
+    {
+      "id": 13,
+      "text": "When filtering by criteria (e.g., price < 4.00 EUR and calories < 300), the system must return all matching products."
+    },
+    {
+      "id": 16,
+      "text": "An order must consist of one or more products, each specified by its product code and a positive integer quantity."
+    },
+    {
+      "id": 22,
+      "text": "The system must assign a unique eight-digit order number with a trailing checksum digit to each successfully placed order."
+    },
+    {
+      "id": 26,
+      "text": "Customers must be able to cancel an order via the web interface by providing a valid order number and authenticating."
+    },
+    {
+      "id": 29,
+      "text": "Once an order is canceled, the system must not allow it to be restored or reactivated."
+    },
+    {
+      "id": 31,
+      "text": "Customers must be able to inquire about the status of an order by providing its order number."
+    },
+    {
+      "id": 36,
+      "text": "Each time an invoice is printed, the system must assign a unique, incrementing copy number to that printout."
+    },
+    {
+      "id": 38,
+      "text": "The system must compute a delivery itinerary that minimizes total travel time or distance for all orders assigned to a delivery clerk on a given trip."
+    },
+    {
+      "id": 40,
+      "text": "The system must present a browser-based delivery confirmation screen on a smartphone when an order is delivered."
+    },
+    {
+      "id": 43,
+      "text": "When a packing clerk marks an order as packed, the system must generate a payment interface record for the external payment system."
+    },
+    {
+      "id": 44,
+      "text": "Each payment interface record must contain: customer number, order number, total amount in Euros, and expected payment date (set to the current date)."
+    },
+    {
+      "id": 45,
+      "text": "The system must automatically generate a daily business report at midnight."
+    },
+    {
+      "id": 46,
+      "text": "The daily business report must list every order from the previous calendar day, including: order number, customer name, customer address, each product with quantity and price, packing clerk name, and delivery clerk name."
+    },
+    {
+      "id": 51,
+      "text": "The system must support exactly four user roles: customer, packing clerk, delivery clerk, and manager."
+    },
+    {
+      "id": 52,
+      "text": "The system must not include a phone clerk role."
+    }
+  ],
+  "Cluster 1": [
+    {
+      "id": 0,
+      "text": "The system must store and manage customer accounts, each identified by a unique customer number."
+    },
+    {
+      "id": 1,
+      "text": "Each customer number must consist of a two-digit area code, followed by seven digits, and end with a one-digit checksum computed from the preceding digits."
+    }
+  ],
+  "Cluster 2": [
+    {
+      "id": 32,
+      "text": "The system must return one of the following order statuses: \"received\", \"packed\", or \"dispatched\"."
+    },
+    {
+      "id": 33,
+      "text": "Packing clerks must be able to view all orders assigned to them that are in \"received\" status."
+    },
+    {
+      "id": 34,
+      "text": "The system must generate a printable delivery label for each order containing: packing clerk name, customer first name, customer surname, delivery address, order number, and assigned delivery clerk name."
+    },
+    {
+      "id": 35,
+      "text": "The system must generate a printable invoice for each order containing: all data from the delivery label, plus each ordered product\u2019s code, description, quantity, unit price, line total, and the order\u2019s grand total in Euros."
+    },
+    {
+      "id": 37,
+      "text": "Delivery clerks must be able to view all orders assigned to them that are in \"packed\" or \"dispatched\" status."
+    },
+    {
+      "id": 39,
+      "text": "The system must allow delivery clerks to print the computed delivery itinerary."
+    }
+  ],
+  "Cluster 3": [
+    {
+      "id": 4,
+      "text": "The system must maintain a blacklist of customers and reject any order attempt from a blacklisted customer."
+    },
+    {
+      "id": 24,
+      "text": "The system must reject any order attempt from a blacklisted customer."
+    },
+    {
+      "id": 25,
+      "text": "The system must not allow orders that combine products from multiple customer accounts."
+    },
+    {
+      "id": 28,
+      "text": "The system must reject cancellation requests for orders that have been marked as packed by a packing clerk."
+    }
+  ],
+  "Cluster 4": [
+    {
+      "id": 14,
+      "text": "Customers must be able to place orders through a web browser interface."
+    },
+    {
+      "id": 17,
+      "text": "Customers must be able to create an order by directly selecting products from the catalog."
+    },
+    {
+      "id": 18,
+      "text": "Customers must be able to create an order by selecting from a list of products filtered by specified criteria."
+    },
+    {
+      "id": 19,
+      "text": "Customers must be able to create a new order by referencing a previous order as a blueprint."
+    },
+    {
+      "id": 20,
+      "text": "An order may reference at most one previous order as a blueprint."
+    },
+    {
+      "id": 21,
+      "text": "A previous order may serve as a blueprint for any number of new orders."
+    },
+    {
+      "id": 30,
+      "text": "The system must not support modification of existing orders; any change requires canceling the original order and placing a new one."
+    }
+  ],
+  "Cluster 5": [
+    {
+      "id": 3,
+      "text": "The system must authenticate customers using a password during order placement or delivery confirmation."
+    },
+    {
+      "id": 41,
+      "text": "Upon delivery, the customer must confirm receipt by entering their password in the browser-based confirmation screen."
+    },
+    {
+      "id": 42,
+      "text": "The system must record a successful delivery confirmation only if the entered password matches the customer\u2019s password."
+    }
+  ],
+  "Cluster 6": [
+    {
+      "id": 15,
+      "text": "Customers must be able to place orders by sending an SMS to the company number 384 29 734 using the syntax: C <customerNumber> W <password> P <productCode> <quantity> [...]."
+    },
+    {
+      "id": 23,
+      "text": "The system must validate the customer number and password during web or SMS order placement and reject invalid credentials."
+    },
+    {
+      "id": 27,
+      "text": "Customers must be able to cancel an order by sending an SMS to 384 29 734 with the syntax: O <orderNumber>."
+    },
+    {
+      "id": 47,
+      "text": "The system must accept incoming SMS messages sent to the short code 384 29 734."
+    },
+    {
+      "id": 48,
+      "text": "The system must parse incoming SMS messages and validate their syntax according to the defined order or cancellation formats."
+    },
+    {
+      "id": 49,
+      "text": "Upon successful SMS order placement, the system must reply with an SMS containing the assigned order number."
+    },
+    {
+      "id": 50,
+      "text": "Upon successful SMS cancellation, the system must reply with an SMS confirming the cancellation."
+    }
+  ]
+}
