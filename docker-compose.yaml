@@ -1,0 +1,33 @@
+services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: qdrant
+    ports:
+      - "6333:6333"   # HTTP API
+      - "6334:6334"   # gRPC API
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      QDRANT__STORAGE__PATH: /qdrant/storage
+      QDRANT__SERVICE__GRPC_PORT: 6334
+      QDRANT__SERVICE__HTTP_PORT: 6333
+    restart: unless-stopped
+
+  app:
+    build:
+      context: .
+      dockerfile: app.Dockerfile
+    container_name: fr_clustering
+    depends_on:
+      - qdrant
+    environment:
+      QDRANT_HOST: qdrant
+      QDRANT_HTTP_PORT: 6333
+    ports:
+      - "8000:8000"
+    ## add CLI args here
+    command: python fr_clustering.py --projection tsne --perplexity 5
+    restart: unless-stopped
+
+volumes:
+  qdrant_data:

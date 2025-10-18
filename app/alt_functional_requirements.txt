@@ -1,0 +1,37 @@
+The system must authenticate a customer using a customer number and a password.
+The system must reject any order-related action for a customer who is blacklisted.
+The system must associate exactly one delivery address with each customer and use that address for all of the customer's orders without requiring re-specification.
+The system must maintain a catalog of simple products, where each simple product has a unique product code, a unit of measure (e.g., "100 grams"), and a price per unit in Euros.
+The system must support prepackaged products, where each prepackaged product is defined as a collection of one or more simple products and/or other prepackaged products.
+The system must allow any user to browse and search the product catalog without authentication.
+The system must enable filtering of products by user-specified characteristics such as maximum price and maximum calorie count, and return only matching products.
+The system must allow an authenticated customer to create a new order through a web interface.
+The system must accept the addition of products to an order by product code and quantity.
+The system must, during order creation, present a list of products that match user-specified filtering criteria.
+The system must allow a customer to initialize a new order by copying all items from a single previously placed order (a "blueprint" order).
+The system must allow a customer to combine direct product entry, filtered product selection, and blueprint-based initialization within a single order creation session.
+The system must enforce that at most one previously placed order is used as a blueprint for any new order.
+The system must assign a unique eight-digit order number with a checksum to each successfully created order.
+The system must accept order creation requests via SMS sent to a designated phone number, where the message body contains a customer number, password, and one or more product entries in a defined syntax.
+The system must parse and validate each SMS order request, verifying the customer number, password, product codes, and quantities.
+The system must send an SMS response to the originating phone number containing the assigned order number for every successfully processed SMS order.
+The system must accept order cancellation requests via SMS sent to the designated phone number, where the message body contains a valid order number.
+The system must validate that an SMS cancellation request applies only to an order that has not yet been marked as assembled.
+The system must allow cancellation of an order only if the order has not been assembled by a packing clerk.
+The system must prohibit any modification to an existing order after submission; changes require cancellation of the original order and placement of a new order.
+The system must prevent reversal of a confirmed order cancellation.
+The system must provide the current status of an order (e.g., "assembled", "in delivery") to the customer through the web interface when queried by order number.
+The system must display to each packing clerk the list of orders assigned to them.
+The system must generate a printable delivery label for each order containing: the packing clerk's name, the customer's first name and surname, the delivery address, the order number, and the assigned delivery clerk's name.
+The system must generate a printable invoice for each order containing all data from the delivery label plus a line-item list of ordered products, their quantities, unit prices, and the total amount.
+The system must assign a unique copy number to each physical printout of an invoice, including reprints.
+The system must display to each delivery clerk the list of orders assigned to them.
+The system must compute an optimized delivery itinerary for the set of orders assigned to a delivery clerk.
+The system must allow a delivery clerk to print the computed delivery itinerary.
+The system must present a secure web interface on a mobile device that requires the customer to enter their password to confirm delivery of an order.
+The system must generate a payment interface record upon completion of order assembly, containing the customer number, order number, total amount in Euros, and expected payment date.
+The system must transmit the payment interface record to the external payment system using a predefined integration interface.
+The system must automatically generate and print a daily business report each night containing, for every order placed that day: the ordered products with quantities, the packing clerk, the delivery clerk, the customer's name, the customer's address, and the order number.
+The system must fully replace the legacy telephone-based order placement process.
+The system must replace the manual text processing system previously used to generate delivery labels and invoices.
+The system must replace the manual or spreadsheet-based tools previously used to calculate and print delivery itineraries.

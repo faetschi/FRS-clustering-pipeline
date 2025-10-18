@@ -1,0 +1,8 @@
+sentence-transformers>=2.2.2
+qdrant-client>=1.15.1
+hdbscan>=0.8.30
+scikit-learn>=1.2.2
+matplotlib>=3.7.1
+plotly>=5.15.0
+pandas>=2.2.2
+umap-learn>=0.5.4
