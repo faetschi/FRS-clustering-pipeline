@@ -86,7 +86,7 @@ Example mapping:
   "CustomerIdentity": ["FR-1", "FR-2", "FR-56"],
   "ProductCatalog": ["FR-4", "FR-5", "FR-6"],
   "OrderIntake": ["FR-8", "FR-16", "FR-25-32"],
-  /* Additional clusters */
+  "OtherClusters": []
 }
 ```
 
