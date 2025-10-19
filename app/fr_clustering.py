@@ -18,6 +18,14 @@ from http.server import HTTPServer, SimpleHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 
 # ==============================
+# CONFIG FROM ENV
+# ==============================
+QDRANT_HOST = os.getenv("QDRANT_HOST", "localhost")
+QDRANT_PORT = int(os.getenv("QDRANT_HTTP_PORT", "6333"))
+OUTPUT_DIR = "/app/output"
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+# ==============================
 # 1. FUNCTIONAL REQUIREMENTS
 # ==============================
 # Configure logging to stdout so container logs capture it. Use LOG_LEVEL env var to control verbosity.
@@ -58,16 +66,8 @@ def load_functional_requirements(path=None):
 # Load functional requirements from external file
 FUNCTIONAL_REQUIREMENTS = load_functional_requirements()
 
-# ==============================
-# CONFIG FROM ENV
-# ==============================
-QDRANT_HOST = os.getenv("QDRANT_HOST", "localhost")
-QDRANT_PORT = int(os.getenv("QDRANT_HTTP_PORT", "6333"))
-OUTPUT_DIR = "/app/output"
-os.makedirs(OUTPUT_DIR, exist_ok=True)
-
 # =========================================
-# 1. HTTP SERVER FOR RESULTS AND EMBEDDINGS
+# 2. HTTP SERVER FOR RESULTS AND EMBEDDINGS
 # =========================================
 
 class FRHTTPRequestHandler(SimpleHTTPRequestHandler):
@@ -112,7 +112,7 @@ class FRHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.wfile.write(f"Error fetching embeddings: {e}".encode("utf-8"))
 
 # ==============================
-# 2. FR CLUSTERING PIPELINE
+# 3. FR CLUSTERING PIPELINE
 # ==============================
 
 def run_clustering_pipeline(frs=None, projection='umap', perplexity=30):
