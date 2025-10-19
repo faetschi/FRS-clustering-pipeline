@@ -1,4 +1,4 @@
-# Functional Requirement Clustering Pipeline
+# Functional Requirements Clustering Pipeline
 
 This project automates the extraction of architectural insights from functional requirements.
 
