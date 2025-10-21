@@ -12,7 +12,6 @@ The pipeline automates:
 - Visualizing clusters in 2D for exploration
 - Serving results via a lightweight HTTP server
 
-Designed for behavior-driven software architecture, it helps identify natural component boundaries (e.g. components or bounded contexts) from requirement text.
 
 ![Clusters Json](docs/clusters.png)
 

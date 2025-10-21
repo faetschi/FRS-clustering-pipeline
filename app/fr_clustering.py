@@ -191,56 +191,76 @@ class FRHTTPRequestHandler(SimpleHTTPRequestHandler):
 def run_clustering_pipeline(
     frs: list[str] | None = None,
     projection: str = 'umap',
-    perplexity: float = 30.0
+    perplexity: float = 30.0,
+    cluster_distance: float = 0.32
 ) -> None:
     """
-    Execute the full clustering pipeline:
-        1. Embed requirements using Sentence-BERT.
-        2. Cluster embeddings with HDBSCAN.
-        3. Store results in Qdrant.
-        4. Generate 2D visualization (UMAP or t-SNE).
-        5. Save interactive HTML plot and cluster summary JSON.
-
-    Args:
-        frs (list[str] | None): Requirements to process. If None, uses global FUNCTIONAL_REQUIREMENTS.
-        projection (str): Dimensionality reduction method ('umap' or 'tsne').
-        perplexity (float): t-SNE perplexity (only used if projection='tsne').
+    Execute the full clustering pipeline using Agglomerative Clustering in embedding space.
     """
     logger.info("🚀 Starting FR Clustering Pipeline...")
 
-    # Suppress non-critical warnings from downstream libraries
-    warnings.filterwarnings("ignore", category=FutureWarning, message=".*force_all_finite.*")
-    warnings.filterwarnings("ignore", category=DeprecationWarning, message=".*recreate_collection.*")
+    warnings.filterwarnings("ignore", category=FutureWarning)
+    warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-    # Use provided FRs or fall back to global list
     frs_list = frs if frs is not None else FUNCTIONAL_REQUIREMENTS
 
-    # Step 1: Generate embeddings
-    logger.info("Embedding functional requirements using Sentence-BERT...")
-    model = SentenceTransformer('all-MiniLM-L6-v2')
-    vectors = model.encode(frs_list).astype(np.float32)
+    # Step 1: Generate embeddings (use a stronger model if desired)
+    logger.info("Embedding functional requirements using SentenceTransformer...")
+    model = SentenceTransformer('all-MiniLM-L6-v2') # all-mpnet-base-v2
+    vectors = model.encode(frs_list, normalize_embeddings=True).astype(np.float32)
 
-    # Step 2: Cluster embeddings
-    logger.info("Clustering embeddings with HDBSCAN...")
-    clusterer = hdbscan.HDBSCAN(
-        min_cluster_size=2,
-        metric='euclidean',
-        cluster_selection_method='leaf'
+    # Step 2: Cluster in FULL 384D SPACE using COSINE DISTANCE
+    logger.info(f"Clustering in embedding space (distance_threshold={cluster_distance})...")
+    from sklearn.metrics import pairwise_distances
+    from sklearn.cluster import AgglomerativeClustering
+
+    # Compute cosine distance matrix (range: 0 to 2)
+    cosine_distances = pairwise_distances(vectors, metric='cosine')
+
+    clusterer = AgglomerativeClustering(
+        n_clusters=None,
+        distance_threshold=cluster_distance,
+        linkage='average',
+        metric='precomputed'
     )
-    cluster_labels = clusterer.fit_predict(vectors)
+    cluster_labels = clusterer.fit_predict(cosine_distances)
 
-    # Step 3: Store in Qdrant
+    n_clusters = len(np.unique(cluster_labels))
+    logger.info(f"Formed {n_clusters} clusters. No noise points.")
+
+    # Step 3: Generate 2D projection JUST FOR VISUALIZATION
+    logger.info(f"Generating 2D projection using {projection.upper()}...")
+    if projection == 'tsne':
+        from sklearn.manifold import TSNE
+        embeddings_2d = TSNE(
+            n_components=2,
+            random_state=42,
+            perplexity=perplexity,
+            metric='cosine',  # important for text
+            init='pca',
+            learning_rate='auto'
+        ).fit_transform(vectors)
+    else:  # UMAP
+        import umap
+        umap_reducer = umap.UMAP(
+            n_components=2,
+            random_state=42,
+            n_neighbors=15,
+            min_dist=0.1,
+            metric='cosine'
+        )
+        embeddings_2d = umap_reducer.fit_transform(vectors)
+
+    # Step 4: Store in Qdrant
     logger.info("Storing results in Qdrant vector database...")
     client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
     collection_name = "earlybird_fr"
     vectors_config = VectorParams(size=384, distance=Distance.COSINE)
 
-    # Ensure clean collection state (handle both new and old Qdrant client versions)
     try:
         if client.collection_exists(collection_name=collection_name):
             client.delete_collection(collection_name=collection_name)
     except AttributeError:
-        # Fallback for older qdrant-client versions without collection_exists()
         try:
             client.delete_collection(collection_name=collection_name)
         except Exception:
@@ -251,42 +271,21 @@ def run_clustering_pipeline(
         PointStruct(
             id=i,
             vector=vectors[i].tolist(),
-            payload={
-                "text": frs_list[i],
-                "cluster": int(cluster_labels[i])
-            }
+            payload={"text": frs_list[i], "cluster": int(cluster_labels[i])}
         )
         for i in range(len(frs_list))
     ]
     client.upsert(collection_name=collection_name, points=points)
 
-    # Step 4: Generate 2D projection for visualization
-    logger.info(f"Generating 2D projection using {projection.upper()}...")
-    if projection == 'tsne':
-        from sklearn.manifold import TSNE
-        embeddings_2d = TSNE(
-            n_components=2,
-            random_state=42,
-            perplexity=perplexity
-        ).fit_transform(vectors)
-    else:  # default: UMAP
-        import umap
-        reducer = umap.UMAP(n_components=2, random_state=42, n_jobs=1)
-        embeddings_2d = reducer.fit_transform(vectors)
+    # Step 5: Create visualization DataFrame
+    plot_labels = [f"Cluster {label}" for label in cluster_labels]  # no noise!
 
-    # Remap cluster labels to sequential IDs (including noise as Cluster 0)
-    unique_labels = sorted(set(cluster_labels))
-    label_map = {old: idx for idx, old in enumerate(unique_labels)}
-    mapped_labels = [label_map[label] for label in cluster_labels]
-
-    # Step 5: Create and save visualization
     df = pd.DataFrame({
         "x": embeddings_2d[:, 0],
         "y": embeddings_2d[:, 1],
-        "cluster": mapped_labels,
+        "cluster_name": plot_labels,
         "text": [f"FR-{i+1}: {fr[:60]}..." for i, fr in enumerate(frs_list)]
     })
-    df['cluster_name'] = [f"Cluster {c}" for c in df['cluster']]
 
     fig = px.scatter(
         df,
@@ -294,29 +293,23 @@ def run_clustering_pipeline(
         y="y",
         color="cluster_name",
         hover_data=["text"],
-        title="Requirement Clusters (2D Projection)",
+        title=f"Requirement Clusters ({n_clusters} groups)",
         color_discrete_sequence=px.colors.qualitative.Plotly,
         width=900,
         height=600
     )
     fig.update_traces(marker=dict(size=10, opacity=0.85))
-    fig.update_xaxes(title_text="Dimension 1 (Reduced)")
-    fig.update_yaxes(title_text="Dimension 2 (Reduced)")
     fig.update_layout(legend_title_text="Cluster")
 
     output_html = os.path.join(OUTPUT_DIR, "clusters.html")
-    fig.write_html(output_html, include_plotlyjs='cdn', full_html=True, auto_open=False)
+    fig.write_html(output_html, include_plotlyjs='cdn')
     logger.info(f"Interactive plot saved to {output_html}")
 
-    # Step 6: Save cluster membership as JSON
-    reverse_map = {new: old for old, new in label_map.items()}
+    # Step 6: Save cluster summary
     cluster_summary = {}
-    for new_cid in sorted(set(mapped_labels)):
-        members = [
-            {"id": i, "text": frs_list[i]}
-            for i, ml in enumerate(mapped_labels) if ml == new_cid
-        ]
-        cluster_summary[f"Cluster {new_cid}"] = members
+    for label in sorted(set(cluster_labels)):
+        members = [{"id": i, "text": frs_list[i]} for i, l in enumerate(cluster_labels) if l == label]
+        cluster_summary[f"Cluster {label}"] = members
 
     output_json = os.path.join(OUTPUT_DIR, "clusters.json")
     with open(output_json, "w", encoding="utf-8") as f:
@@ -324,7 +317,6 @@ def run_clustering_pipeline(
     logger.info(f"Cluster summary saved to {output_json}")
 
     logger.info("✅ Clustering pipeline completed successfully.")
-
 
 # =============================================================================
 # 5. HTTP SERVER LAUNCHER
@@ -367,6 +359,14 @@ if __name__ == "__main__":
         default=30.0,
         help='Perplexity parameter for t-SNE (ignored if using UMAP).'
     )
+    parser.add_argument(
+        '--cluster-distance',
+        type=float,
+        default=0.65,
+        help='Distance threshold for Agglomerative Clustering in UMAP space. '
+            'Lower values create more clusters, higher values merge clusters. '
+            'Default: 0.65'
+    )
     args = parser.parse_args()
 
     # Optionally override FR source
@@ -385,7 +385,11 @@ if __name__ == "__main__":
         sys.exit(0)
 
     # Run the full pipeline
-    run_clustering_pipeline(projection=args.projection, perplexity=args.perplexity)
+    run_clustering_pipeline(
+        projection=args.projection,
+        perplexity=args.perplexity,
+        cluster_distance=args.cluster_distance
+    )
 
     # Start HTTP server in background thread
     server_thread = threading.Thread(target=start_http_server, daemon=True)
