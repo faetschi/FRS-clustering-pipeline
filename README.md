@@ -1,4 +1,4 @@
-# Functional Requirement Clustering Pipeline
+# Functional Requirements Clustering Pipeline
 
 ![Visualization 2D](docs/vis.png)
 
@@ -12,7 +12,7 @@ The pipeline automates:
 - Visualizing clusters in 2D for exploration
 - Serving results via a lightweight HTTP server
 
-Designed for behavior-driven software architecture, it helps identify natural component boundaries (e.g., components or bounded contexts) from requirement text.
+Designed for behavior-driven software architecture, it helps identify natural component boundaries (e.g. components or bounded contexts) from requirement text.
 
 ![Clusters Json](docs/clusters.png)
 
@@ -26,7 +26,9 @@ Designed for behavior-driven software architecture, it helps identify natural co
 - **HTTP API**:
   - `/clusters.html` – Interactive cluster map
   - `/clusters.json` – Machine-readable cluster assignments
-  - `/embeddings?limit=N&vector_len=M` – Inspect raw vectors
+  - `/embeddings?limit=N&vector_len=M` – Inspect raw vectors  
+    - **N** = number of embedding vectors to return  
+    - **M** = length (dimensionality) of each embedding vector
 - **Docker-ready**: Runs in containers alongside Qdrant for easy setup
 ## 🚀 Quick Start
 
