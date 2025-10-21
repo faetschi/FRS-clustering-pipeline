@@ -1,8 +1,8 @@
 # Functional Requirement Clustering Pipeline
 
-This project automates the extraction of architectural insights from functional requirements.
-
 ![Visualization 2D](docs/vis.png)
+
+The goal of this project is to derive initial architecture proposals by automatically identifying cohesive groups of functional requirements. Each group (or cluster) represents a potential software component or bounded context, enabling a behavior-driven approach to architectural insight and system decomposition.
 
 The pipeline automates:
 
@@ -131,7 +131,7 @@ command: python fr_clustering.py --projection tsne --perplexity 5
 | FR_FILE | functional_requirements.txt | Path to requirements file |
 | LOG_LEVEL | INFO | Logging verbosity (DEBUG, INFO, WARNING) |
 
-## 🛠️ Dependencies
+## Dependencies
 
 See `requirements.txt` for full list.
 

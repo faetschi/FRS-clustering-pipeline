@@ -1,3 +1,22 @@
+"""
+Functional Requirements Clustering Pipeline
+
+This script:
+1. Loads functional requirements (FRs) from a file (JSON or plain text).
+2. Embeds them using SentenceTransformer.
+3. Clusters embeddings using HDBSCAN.
+4. Stores results in a Qdrant vector database.
+5. Generates a 2D visualization (UMAP or t-SNE).
+6. Serves results via a built-in HTTP server with JSON/HTML endpoints.
+
+Environment variables:
+- LOG_LEVEL: Logging verbosity (default: INFO)
+- FR_FILE: Path to FR input file (default: ./functional_requirements.txt)
+- QDRANT_HOST: Qdrant server host (default: localhost)
+- QDRANT_HTTP_PORT: Qdrant HTTP port (default: 6333)
+"""
+
+
 import os
 import json
 import hdbscan
@@ -13,76 +32,128 @@ import time
 
 from sentence_transformers import SentenceTransformer
 from qdrant_client import QdrantClient
-from qdrant_client.models import PointStruct, VectorParams, Distance, Filter, FieldCondition, MatchValue
+from qdrant_client.models import (
+    PointStruct,
+    VectorParams,
+    Distance,
+    Filter,
+    FieldCondition,
+    MatchValue,
+)
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 
-# ==============================
-# 1. FUNCTIONAL REQUIREMENTS
-# ==============================
-# Configure logging to stdout so container logs capture it. Use LOG_LEVEL env var to control verbosity.
+# =============================================================================
+# 1. CONFIGURATION & LOGGING SETUP
+# =============================================================================
+
+# Configure logging to stdout for container compatibility.
+# Verbosity controlled via LOG_LEVEL environment variable.
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
-logging.basicConfig(stream=sys.stdout,
-                    level=getattr(logging, LOG_LEVEL, logging.INFO),
-                    format="%(asctime)s %(levelname)s %(message)s")
+logging.basicConfig(
+    stream=sys.stdout,
+    level=getattr(logging, LOG_LEVEL, logging.INFO),
+    format="%(asctime)s %(levelname)s %(message)s",
+)
 logger = logging.getLogger(__name__)
 
-def load_functional_requirements(path=None):
-    """Load functional requirements from a file.
+# Qdrant connection settings
+QDRANT_HOST = os.getenv("QDRANT_HOST", "localhost")
+QDRANT_PORT = int(os.getenv("QDRANT_HTTP_PORT", "6333"))
 
-    Supports JSON files that contain a list of strings or plain text files with one requirement per line.
-    The path can be overridden by the FR_FILE environment variable. Returns a list of strings.
+# Output directory for generated artifacts
+OUTPUT_DIR = "/app/output"
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+
+# =============================================================================
+# 2. FUNCTIONAL REQUIREMENTS LOADING
+# =============================================================================
+
+def load_functional_requirements(path: str | None = None) -> list[str]:
+    """
+    Load functional requirements from a file.
+
+    Supports:
+        - JSON files containing a list of strings.
+        - Plain text files with one requirement per line.
+
+    Args:
+        path (str | None): Path to the requirements file.
+            If None, uses the FR_FILE environment variable.
+            Defaults to 'functional_requirements.txt' in the script directory.
+
+    Returns:
+        list[str]: Non-empty, stripped requirement strings.
+
+    Raises:
+        FileNotFoundError: If the file does not exist.
+        ValueError: If the file is empty or JSON is malformed/not a list.
     """
     if path is None:
-        path = os.getenv("FR_FILE", os.path.join(os.path.dirname(__file__), "functional_requirements.txt"))
+        path = os.getenv(
+            "FR_FILE",
+            os.path.join(os.path.dirname(__file__), "functional_requirements.txt")
+        )
+
     if not os.path.exists(path):
         raise FileNotFoundError(f"Functional requirements file not found: {path}")
+
     try:
         if path.lower().endswith('.json'):
             with open(path, 'r', encoding='utf-8') as fh:
                 data = json.load(fh)
             if not isinstance(data, list):
-                raise ValueError("JSON FR file must contain a list of strings")
-            return [str(x) for x in data]
+                raise ValueError("JSON FR file must contain a top-level list of strings.")
+            return [str(item).strip() for item in data if str(item).strip()]
         else:
             with open(path, 'r', encoding='utf-8') as fh:
                 lines = [line.strip() for line in fh if line.strip()]
             if not lines:
-                # Graceful, descriptive error for empty FR files
                 raise ValueError(f"Functional requirements file is empty: {path}")
             return lines
-    except Exception:
-        # Re-raise with context
+    except Exception as e:
+        logger.error(f"Failed to load functional requirements from {path}: {e}")
         raise
 
-# Load functional requirements from external file
+
+# Load requirements at module startup (can be overridden via CLI)
 FUNCTIONAL_REQUIREMENTS = load_functional_requirements()
 
-# ==============================
-# CONFIG FROM ENV
-# ==============================
-QDRANT_HOST = os.getenv("QDRANT_HOST", "localhost")
-QDRANT_PORT = int(os.getenv("QDRANT_HTTP_PORT", "6333"))
-OUTPUT_DIR = "/app/output"
-os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-# =========================================
-# 1. HTTP SERVER FOR RESULTS AND EMBEDDINGS
-# =========================================
+# =============================================================================
+# 3. HTTP SERVER FOR SERVING RESULTS
+# =============================================================================
 
 class FRHTTPRequestHandler(SimpleHTTPRequestHandler):
+    """HTTP request handler that serves static files and dynamic embeddings."""
+
     def do_GET(self):
+        """Route GET requests: static files by default, /embeddings dynamically."""
         parsed = urlparse(self.path)
         if parsed.path == "/embeddings":
             self.handle_embeddings(parsed)
         else:
             super().do_GET()
-                
+
     def handle_embeddings(self, parsed):
+        """
+        Serve a JSON snippet of stored embeddings from Qdrant.
+
+        Query parameters:
+            - limit (int): Number of points to return (default: 5).
+            - vector_len (int): Number of vector dimensions to include (default: 50).
+
+        Response includes:
+            - id: Point ID
+            - text: Original requirement text
+            - cluster: Assigned cluster label
+            - vector_sample: First N dimensions of the embedding
+        """
         try:
             query = parse_qs(parsed.query)
             limit = int(query.get("limit", [5])[0])
-            vector_len = int(query.get("vector_len", [50])[0])  # Default: 50 dimensions
+            vector_len = int(query.get("vector_len", [50])[0])
 
             client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
             points, _ = client.scroll(
@@ -107,157 +178,223 @@ class FRHTTPRequestHandler(SimpleHTTPRequestHandler):
             self.wfile.write(json.dumps(snippet, indent=2).encode("utf-8"))
 
         except Exception as e:
+            logger.error(f"Error handling /embeddings request: {e}")
             self.send_response(500)
             self.end_headers()
             self.wfile.write(f"Error fetching embeddings: {e}".encode("utf-8"))
 
-# ==============================
-# 2. FR CLUSTERING PIPELINE
-# ==============================
 
-def run_clustering_pipeline(frs=None, projection='umap', perplexity=30):
+# =============================================================================
+# 4. CLUSTERING PIPELINE
+# =============================================================================
+
+def run_clustering_pipeline(
+    frs: list[str] | None = None,
+    projection: str = 'umap',
+    perplexity: float = 30.0
+) -> None:
+    """
+    Execute the full clustering pipeline:
+        1. Embed requirements using Sentence-BERT.
+        2. Cluster embeddings with HDBSCAN.
+        3. Store results in Qdrant.
+        4. Generate 2D visualization (UMAP or t-SNE).
+        5. Save interactive HTML plot and cluster summary JSON.
+
+    Args:
+        frs (list[str] | None): Requirements to process. If None, uses global FUNCTIONAL_REQUIREMENTS.
+        projection (str): Dimensionality reduction method ('umap' or 'tsne').
+        perplexity (float): t-SNE perplexity (only used if projection='tsne').
+    """
     logger.info("🚀 Starting FR Clustering Pipeline...")
-    
-    # Suppress known deprecation/future warnings from sklearn and qdrant helper
+
+    # Suppress non-critical warnings from downstream libraries
     warnings.filterwarnings("ignore", category=FutureWarning, message=".*force_all_finite.*")
     warnings.filterwarnings("ignore", category=DeprecationWarning, message=".*recreate_collection.*")
 
-    # Embed
+    # Use provided FRs or fall back to global list
     frs_list = frs if frs is not None else FUNCTIONAL_REQUIREMENTS
+
+    # Step 1: Generate embeddings
+    logger.info("Embedding functional requirements using Sentence-BERT...")
     model = SentenceTransformer('all-MiniLM-L6-v2')
     vectors = model.encode(frs_list).astype(np.float32)
 
-    # Cluster
-    clusterer = hdbscan.HDBSCAN(min_cluster_size=2, metric='euclidean', cluster_selection_method='leaf')
+    # Step 2: Cluster embeddings
+    logger.info("Clustering embeddings with HDBSCAN...")
+    clusterer = hdbscan.HDBSCAN(
+        min_cluster_size=2,
+        metric='euclidean',
+        cluster_selection_method='leaf'
+    )
     cluster_labels = clusterer.fit_predict(vectors)
 
-    # Store in Qdrant
+    # Step 3: Store in Qdrant
+    logger.info("Storing results in Qdrant vector database...")
     client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
-    # Newer qdrant client: check if collection exists, delete or create
     collection_name = "earlybird_fr"
     vectors_config = VectorParams(size=384, distance=Distance.COSINE)
+
+    # Ensure clean collection state (handle both new and old Qdrant client versions)
     try:
         if client.collection_exists(collection_name=collection_name):
-            # delete then create to ensure a fresh collection
             client.delete_collection(collection_name=collection_name)
-        client.create_collection(collection_name=collection_name, vectors_config=vectors_config)
-    except Exception:
-        # Fallback for older client versions that may not have collection_exists
-        # Attempt to delete and recreate; if delete fails, try create directly
+    except AttributeError:
+        # Fallback for older qdrant-client versions without collection_exists()
         try:
             client.delete_collection(collection_name=collection_name)
         except Exception:
             pass
-        client.create_collection(collection_name=collection_name, vectors_config=vectors_config)
+    client.create_collection(collection_name=collection_name, vectors_config=vectors_config)
+
     points = [
         PointStruct(
             id=i,
             vector=vectors[i].tolist(),
-            payload={"text": frs_list[i], "cluster": int(cluster_labels[i])}
+            payload={
+                "text": frs_list[i],
+                "cluster": int(cluster_labels[i])
+            }
         )
         for i in range(len(frs_list))
     ]
-    client.upsert(collection_name="earlybird_fr", points=points)
+    client.upsert(collection_name=collection_name, points=points)
 
-    # 2D Visualization — choose projection method
+    # Step 4: Generate 2D projection for visualization
+    logger.info(f"Generating 2D projection using {projection.upper()}...")
     if projection == 'tsne':
-        # t-SNE focuses on local neighborhoods; slower but sometimes clearer for small datasets
         from sklearn.manifold import TSNE
-        embeddings_2d = TSNE(n_components=2, random_state=42, perplexity=perplexity).fit_transform(vectors)
-    else:
+        embeddings_2d = TSNE(
+            n_components=2,
+            random_state=42,
+            perplexity=perplexity
+        ).fit_transform(vectors)
+    else:  # default: UMAP
         import umap
-        # UMAP warns when n_jobs is overridden by random_state; set n_jobs=1 explicitly
         reducer = umap.UMAP(n_components=2, random_state=42, n_jobs=1)
         embeddings_2d = reducer.fit_transform(vectors)
-    # Remap cluster labels (which may include -1 for noise) to sequential cluster IDs
+
+    # Remap cluster labels to sequential IDs (including noise as Cluster 0)
     unique_labels = sorted(set(cluster_labels))
     label_map = {old: idx for idx, old in enumerate(unique_labels)}
-    mapped_labels = [label_map[l] for l in cluster_labels]
+    mapped_labels = [label_map[label] for label in cluster_labels]
 
+    # Step 5: Create and save visualization
     df = pd.DataFrame({
         "x": embeddings_2d[:, 0],
         "y": embeddings_2d[:, 1],
         "cluster": mapped_labels,
         "text": [f"FR-{i+1}: {fr[:60]}..." for i, fr in enumerate(frs_list)]
     })
-    # Use discrete cluster names so legend shows 'Cluster N' with color mapping
     df['cluster_name'] = [f"Cluster {c}" for c in df['cluster']]
+
     fig = px.scatter(
         df,
         x="x",
         y="y",
         color="cluster_name",
         hover_data=["text"],
-        title="Requirement Clusters (t-SNE Visualization)",
+        title="Requirement Clusters (2D Projection)",
         color_discrete_sequence=px.colors.qualitative.Plotly,
         width=900,
         height=600
     )
-    # Make markers a bit larger and slightly transparent for readability
     fig.update_traces(marker=dict(size=10, opacity=0.85))
-    # Axis titles: horizontal = Dimension 1, vertical = Dimension 2
     fig.update_xaxes(title_text="Dimension 1 (Reduced)")
     fig.update_yaxes(title_text="Dimension 2 (Reduced)")
     fig.update_layout(legend_title_text="Cluster")
-    # Write HTML using Plotly CDN to avoid embedding the full plotly.js bundle
-    # This makes the file much smaller and speeds up loading in the browser.
-    fig.write_html(f"{OUTPUT_DIR}/clusters.html", include_plotlyjs='cdn', full_html=True, auto_open=False)
 
-    # Save cluster summary as JSON using user-friendly cluster names
-    cluster_summary = {}
-    # Build a reverse map from mapped id -> original label values
+    output_html = os.path.join(OUTPUT_DIR, "clusters.html")
+    fig.write_html(output_html, include_plotlyjs='cdn', full_html=True, auto_open=False)
+    logger.info(f"Interactive plot saved to {output_html}")
+
+    # Step 6: Save cluster membership as JSON
     reverse_map = {new: old for old, new in label_map.items()}
+    cluster_summary = {}
     for new_cid in sorted(set(mapped_labels)):
         members = [
             {"id": i, "text": frs_list[i]}
             for i, ml in enumerate(mapped_labels) if ml == new_cid
         ]
-        cluster_name = f"Cluster {new_cid}"
-        cluster_summary[cluster_name] = members
-    with open(f"{OUTPUT_DIR}/clusters.json", "w") as f:
-        json.dump(cluster_summary, f, indent=2)
+        cluster_summary[f"Cluster {new_cid}"] = members
 
-    logger.info(f"✅ Pipeline complete. Results saved to {OUTPUT_DIR}")
+    output_json = os.path.join(OUTPUT_DIR, "clusters.json")
+    with open(output_json, "w", encoding="utf-8") as f:
+        json.dump(cluster_summary, f, indent=2)
+    logger.info(f"Cluster summary saved to {output_json}")
+
+    logger.info("✅ Clustering pipeline completed successfully.")
+
+
+# =============================================================================
+# 5. HTTP SERVER LAUNCHER
+# =============================================================================
 
 def start_http_server():
+    """Start a simple HTTP server to serve output files on port 8000."""
     os.chdir(OUTPUT_DIR)
     server = HTTPServer(("0.0.0.0", 8000), FRHTTPRequestHandler)
     logger.info("🚀 Serving results at http://localhost:8000")
-    logger.info("📌 Embeddings snippet available at http://localhost:8000/embeddings?limit=5")
+    logger.info("📌 Embeddings endpoint: http://localhost:8000/embeddings?limit=5")
     server.serve_forever()
 
+
+# =============================================================================
+# 6. MAIN EXECUTION BLOCK
+# =============================================================================
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="FR clustering pipeline")
-    parser.add_argument('--print-fr', action='store_true', help='Print loaded functional requirements and exit')
-    parser.add_argument('--fr-file', type=str, help='Path to functional requirements file (overrides FR_FILE env var)')
-    parser.add_argument('--projection', choices=['umap', 'tsne'], default='tsne', help='2D projection method')
-    parser.add_argument('--perplexity', type=float, default=30.0, help='Perplexity for t-SNE (if chosen)')
+    parser = argparse.ArgumentParser(description="Functional Requirements Clustering Pipeline")
+    parser.add_argument(
+        '--print-fr',
+        action='store_true',
+        help='Print loaded functional requirements and exit.'
+    )
+    parser.add_argument(
+        '--fr-file',
+        type=str,
+        help='Path to functional requirements file (overrides FR_FILE env var).'
+    )
+    parser.add_argument(
+        '--projection',
+        choices=['umap', 'tsne'],
+        default='tsne',
+        help='2D projection method for visualization (default: tsne).'
+    )
+    parser.add_argument(
+        '--perplexity',
+        type=float,
+        default=30.0,
+        help='Perplexity parameter for t-SNE (ignored if using UMAP).'
+    )
     args = parser.parse_args()
 
-    # If user supplied a custom FR file, reload from it
+    # Optionally override FR source
     if args.fr_file:
         try:
             FUNCTIONAL_REQUIREMENTS = load_functional_requirements(args.fr_file)
         except Exception as e:
-            print(f"Error loading functional requirements: {e}", file=sys.stderr)
+            logger.error(f"Failed to load FR file: {e}")
             sys.exit(2)
 
+    # Debug: print requirements and exit
     if args.print_fr:
-        print("Loaded Functional Requirements:")
+        logger.info("Loaded Functional Requirements:")
         for i, fr in enumerate(FUNCTIONAL_REQUIREMENTS, start=1):
             print(f"{i}. {fr}")
         sys.exit(0)
 
-    # Run clustering once
+    # Run the full pipeline
     run_clustering_pipeline(projection=args.projection, perplexity=args.perplexity)
-    
-    # Start HTTP server in background
+
+    # Start HTTP server in background thread
     server_thread = threading.Thread(target=start_http_server, daemon=True)
     server_thread.start()
-    
-    # Keep container alive
+    logger.info("HTTP server started in background.")
+
+    # Keep main thread alive to prevent container exit
     try:
         while True:
             time.sleep(10)
     except KeyboardInterrupt:
-        logger.info("Shutting down")
+        logger.info("Received interrupt signal. Shutting down gracefully.")
