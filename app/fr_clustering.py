@@ -4,7 +4,7 @@ Functional Requirements Clustering Pipeline
 This script:
 1. Loads functional requirements (FRs) from a file (JSON or plain text).
 2. Embeds them using SentenceTransformer.
-3. Clusters embeddings using HDBSCAN.
+3. Clusters embeddings using Agglomerative Clustering with cosine distance.
 4. Stores results in a Qdrant vector database.
 5. Generates a 2D visualization (UMAP or t-SNE).
 6. Serves results via a built-in HTTP server with JSON/HTML endpoints.
@@ -19,7 +19,6 @@ Environment variables:
 
 import os
 import json
-import hdbscan
 import numpy as np
 import plotly.express as px
 import pandas as pd
@@ -36,9 +35,6 @@ from qdrant_client.models import (
     PointStruct,
     VectorParams,
     Distance,
-    Filter,
-    FieldCondition,
-    MatchValue,
 )
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
@@ -192,21 +188,37 @@ def run_clustering_pipeline(
     frs: list[str] | None = None,
     projection: str = 'umap',
     perplexity: float = 30.0,
-    cluster_distance: float = 0.32
+    cluster_distance: float = 0.65,
+    embedding_model: str = 'all-MiniLM-L6-v2'
 ) -> None:
     """
-    Execute the full clustering pipeline using Agglomerative Clustering in embedding space.
+    Execute the full clustering pipeline:
+        1. Embed requirements using SentenceTransformer.
+        2. Cluster embeddings using Agglomerative Clustering with cosine distance.
+        3. Store results in Qdrant.
+        4. Generate 2D visualization (UMAP or t-SNE).
+        5. Save interactive HTML plot and cluster summary JSON.
+
+    Note: Agglomerative Clustering does not produce noise points — all requirements are assigned to a cluster.
+
+    Args:
+        frs: Requirements to process. If None, uses global FUNCTIONAL_REQUIREMENTS.
+        projection: Dimensionality reduction method ('umap' or 'tsne').
+        perplexity: t-SNE perplexity (only used if projection='tsne').
+        cluster_distance: Distance threshold for clustering in cosine embedding space.
+                         Lower → more clusters; higher → fewer clusters.
+        embedding_model: SentenceTransformer model for embeddings.
     """
     logger.info("🚀 Starting FR Clustering Pipeline...")
 
-    warnings.filterwarnings("ignore", category=FutureWarning)
-    warnings.filterwarnings("ignore", category=DeprecationWarning)
+    # Only suppress known Qdrant/SentenceTransformer warnings if needed
+    warnings.filterwarnings("ignore", category=FutureWarning, message=".*force_all_finite.*")
 
     frs_list = frs if frs is not None else FUNCTIONAL_REQUIREMENTS
 
-    # Step 1: Generate embeddings (use a stronger model if desired)
+    # Step 1: Generate embeddings
     logger.info("Embedding functional requirements using SentenceTransformer...")
-    model = SentenceTransformer('all-MiniLM-L6-v2') # all-mpnet-base-v2
+    model = SentenceTransformer(embedding_model)
     vectors = model.encode(frs_list, normalize_embeddings=True).astype(np.float32)
 
     # Step 2: Cluster in FULL 384D SPACE using COSINE DISTANCE
@@ -226,7 +238,7 @@ def run_clustering_pipeline(
     cluster_labels = clusterer.fit_predict(cosine_distances)
 
     n_clusters = len(np.unique(cluster_labels))
-    logger.info(f"Formed {n_clusters} clusters. No noise points.")
+    logger.info(f"Formed {n_clusters} clusters.")
 
     # Step 3: Generate 2D projection JUST FOR VISUALIZATION
     logger.info(f"Generating 2D projection using {projection.upper()}...")
@@ -278,7 +290,7 @@ def run_clustering_pipeline(
     client.upsert(collection_name=collection_name, points=points)
 
     # Step 5: Create visualization DataFrame
-    plot_labels = [f"Cluster {label}" for label in cluster_labels]  # no noise!
+    plot_labels = [f"Cluster {label}" for label in cluster_labels]
 
     df = pd.DataFrame({
         "x": embeddings_2d[:, 0],
@@ -293,7 +305,7 @@ def run_clustering_pipeline(
         y="y",
         color="cluster_name",
         hover_data=["text"],
-        title=f"Requirement Clusters ({n_clusters} groups)",
+        title=f"Requirement Clusters ({n_clusters} groups, Agglomerative Clustering)",
         color_discrete_sequence=px.colors.qualitative.Plotly,
         width=900,
         height=600
@@ -343,6 +355,13 @@ if __name__ == "__main__":
         help='Print loaded functional requirements and exit.'
     )
     parser.add_argument(
+        '--embedding-model',
+        type=str,
+        default='all-MiniLM-L6-v2',
+        choices=['all-MiniLM-L6-v2', 'all-mpnet-base-v2'],
+        help='SentenceTransformer model for embeddings (default: all-MiniLM-L6-v2).'
+    )
+    parser.add_argument(
         '--fr-file',
         type=str,
         help='Path to functional requirements file (overrides FR_FILE env var).'
@@ -350,8 +369,8 @@ if __name__ == "__main__":
     parser.add_argument(
         '--projection',
         choices=['umap', 'tsne'],
-        default='tsne',
-        help='2D projection method for visualization (default: tsne).'
+        default='umap',
+        help='2D projection method for visualization.'
     )
     parser.add_argument(
         '--perplexity',
@@ -363,9 +382,9 @@ if __name__ == "__main__":
         '--cluster-distance',
         type=float,
         default=0.65,
-        help='Distance threshold for Agglomerative Clustering in UMAP space. '
-            'Lower values create more clusters, higher values merge clusters. '
-            'Default: 0.65'
+        help='Distance threshold for Agglomerative Clustering in cosine embedding space. '
+             'Lower values create more clusters, higher values merge clusters. '
+             'Default: 0.65'
     )
     args = parser.parse_args()
 
@@ -388,7 +407,8 @@ if __name__ == "__main__":
     run_clustering_pipeline(
         projection=args.projection,
         perplexity=args.perplexity,
-        cluster_distance=args.cluster_distance
+        cluster_distance=args.cluster_distance,
+        embedding_model=args.embedding_model
     )
 
     # Start HTTP server in background thread

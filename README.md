@@ -19,7 +19,7 @@ The pipeline automates:
 
 - **Flexible input**: Load functional requirements from `.txt` or `.json` files
 - **Modern embeddings**: Uses `all-MiniLM-L6-v2` (384-dim sentence transformers) for semantic representation
-- **Smart clustering**: HDBSCAN automatically detects cluster count and handles noise
+- **Controllable clustering**: Agglomerative Clustering with cosine distance; cluster granularity tuned via --cluster-distance
 - **Semantic search**: Store vectors and metadata in Qdrant for fast querying and filtering
 - **Interactive visualization**: 2D scatter plots with hover details using Plotly
 - **HTTP API**:
@@ -73,8 +73,8 @@ http://localhost:8000/embeddings?limit=5
 ### Cluster Quality
 
 - Trust `clusters.json` over the 2D plot: Clustering happens in 384D; the plot is a visualization aid
-- Large "catch-all" clusters often contain cross-cutting concerns (e.g., reporting, system replacement)
 - Small, tight clusters indicate specialized subdomains (e.g., SMS parsing, blueprint ordering)
+- Larger, more diverse clusters, ...
 
 ### Architectural Mapping
 
@@ -106,20 +106,22 @@ CLI arguments can be used by modifying the `docker-compose.yml` `app` service. U
 ```bash
 python fr_clustering.py --help
 
-- --print-fr                   : Print loaded requirements and exit
-- --fr-file       PATH         : Override requirements file path
-- --projection    [umap|tsne]  : Choose 2D projection method (default: tsne)
-- --perplexity    FLOAT        : t-SNE perplexity (default: 30.0)
+- --print-fr                       : Print loaded requirements and exit
+- --fr-file           PATH         : Override requirements file path
+- --projection        [umap|tsne]  : Choose 2D projection method (default: umap)
+- --perplexity        FLOAT        : t-SNE perplexity (default: 30.0)
+- --cluster-distance  FLOAT        : Cosine distance threshold for clustering (default: 0.32)
+- --embedding-model   [all-MiniLM-L6-v2|all-mpnet-base-v2] : Choose SentenceTransformer model for embeddings (default: all-MiniLM-L6-v2)
 ```
 
 Usage in ``docker-compose.yaml``:
 
 ```yaml
 # command: overrides the default CMD in the Dockerfile, allowing you to specify CLI arguments.
-command: python fr_clustering.py --projection tsne --perplexity 5
+command: python fr_clustering.py --projection tsne --perplexity 5 --cluster-distance 0.2
 ```
 
->💡 Tip for small datasets (< 50 items): Use `--projection tsne --perplexity 5` for clearer local structure. 
+>💡 Tip for small datasets (< 30 items): Use `--projection tsne --perplexity 5 --cluster-distance 0.2` for finer-grained clusters. 
 
 ## ⚙️ Configuration
 

@@ -26,7 +26,8 @@ services:
     ports:
       - "8000:8000"
     ## add CLI args here
-    command: python fr_clustering.py --projection tsne --perplexity 5
+    command: python fr_clustering.py --projection umap --perplexity 5  
+    # command: python fr_clustering.py --cluster-distance 0.8 --projection tsne --perplexity 10 --embedding-model all-mpnet-base-v2
     restart: unless-stopped
 
 volumes:
