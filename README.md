@@ -19,7 +19,7 @@ The pipeline automates:
 
 - **Flexible input**: Load functional requirements from `.txt` or `.json` files
 - **Modern embeddings**: Uses `all-MiniLM-L6-v2` (384-dim sentence transformers) for semantic representation
-- **Controllable clustering**: Agglomerative Clustering with cosine distance; cluster granularity tuned via --cluster-distance
+- **Controllable clustering**: Agglomerative Clustering with cosine distance; cluster granularity tuned via ``--cluster-distance``
 - **Semantic search**: Store vectors and metadata in Qdrant for fast querying and filtering
 - **Interactive visualization**: 2D scatter plots with hover details using Plotly
 - **HTTP API**:
@@ -110,7 +110,7 @@ python fr_clustering.py --help
 - --fr-file           PATH         : Override requirements file path
 - --projection        [umap|tsne]  : Choose 2D projection method (default: umap)
 - --perplexity        FLOAT        : t-SNE perplexity (default: 30.0)
-- --cluster-distance  FLOAT        : Cosine distance threshold for clustering (default: 0.32)
+- --cluster-distance  FLOAT        : Cosine distance threshold for clustering (default: 0.65)
 - --embedding-model   [all-MiniLM-L6-v2|all-mpnet-base-v2] : Choose SentenceTransformer model for embeddings (default: all-MiniLM-L6-v2)
 ```
 
@@ -118,7 +118,8 @@ Usage in ``docker-compose.yaml``:
 
 ```yaml
 # command: overrides the default CMD in the Dockerfile, allowing you to specify CLI arguments.
-command: python fr_clustering.py --projection tsne --perplexity 5 --cluster-distance 0.2
+# for example:
+command: python fr_clustering.py --projection tsne --perplexity 5 --cluster-distance 0.2 --embedding-model all-mpnet-base-v2
 ```
 
 >💡 Tip for small datasets (< 30 items): Use `--projection tsne --perplexity 5 --cluster-distance 0.2` for finer-grained clusters. 
